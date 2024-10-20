@@ -1,0 +1,77 @@
+services:
+
+  app:
+    build: ./app/
+    image: mlservice
+    env_file:
+      - ./app/.env
+    ports:
+      - "3479:8080"
+    expose:
+      - 8080
+    volumes:
+      - ./app:/app
+    command: python api.py
+
+  worker:
+    build: ./app/
+    image: worker
+    env_file:
+      - ./rabbitmq/.env
+    restart: always
+    volumes:
+      - ./app:/app
+    working_dir: /app
+    command: python -u worker.py
+    deploy:
+      mode: replicated
+      replicas: 2
+    depends_on:
+      rabbit:
+        condition: service_healthy
+
+  web:
+    image: nginx:1.27.0
+    volumes:
+      - type: bind
+        source: ./nginx/nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+    ports:
+      - "80:80"
+      - "443:443"
+
+  webui:
+    build: ./webui/
+    image: webui
+    volumes:
+      - ./webui:/webui
+    command: streamlit run webui.py
+
+  rabbit:
+    image: rabbitmq:3.13.3-management
+    restart: always
+    env_file:
+      - ./rabbitmq/.env
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    volumes:
+      - ./rabbitmq/mount:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 4s
+      timeout: 6s
+      retries: 5
+
+  postgres:
+    image: postgres:16.3
+    expose:
+      - 5432
+    env_file:
+      - ./database/.env
+    volumes:
+      - db-data:/etc/data
+
+volumes:
+  db-data:
